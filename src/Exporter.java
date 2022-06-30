@@ -1,7 +1,7 @@
 import java.io.*;
 
+import static com.mongodb.client.model.Projections.*;
 import com.mongodb.BasicDBObject;
-import com.mongodb.DBCollection;
 import com.mongodb.DBObject;
 import com.mongodb.client.*;
 import com.mongodb.util.JSON;
@@ -24,12 +24,9 @@ public class Exporter {
     String sortOrder = "";
     String format = "";
     String resultFile = "";
-    String[] Captions = new String[]{"ID", "RawAddress", "RawPunkt_old", "RawStreet_old",
-            "RawHouseNumber_old", "PeopleCount", "_id",
-            "Municipalitet", "Street", "HouseNumber", "AddressNotDecomposed", "oarID"};
 
-
-    int size = Captions.length;
+    JSONArray list;
+    long docCount;
 
     public MongoCursor<Document> getData() throws IOException, ParseException {
 
@@ -49,15 +46,26 @@ public class Exporter {
         this.format = (String) params.get("format");
         this.resultFile = (String) params.get("resultFile");
 
+        System.out.println(this.sortBy + ' ' +  this.sortOrder);
+
         MongoClient mongo = MongoClients.create(); //this.connectionString
         MongoDatabase db = mongo.getDatabase(this.database);
         MongoCollection<Document> collection = db.getCollection(this.dataset);
+        this.docCount = collection.countDocuments();
         MongoCollection<Document> structure = db.getCollection("datasetsStructure");
+        MongoCursor<Document> it = structure.find().iterator();
 
-        Document struc;
+        this.list = new JSONArray();
+
+      while(it.hasNext()){
+          String ob = it.next().toJson();
+          //JSONParser parser = new JSONParser();
+          JSONObject js = (JSONObject) jsonParser.parse(ob);
+          this.list = (JSONArray) js.get("fields");
+        }
 
         //* IMPORT *//
-        reader = new FileReader("datasetsStructure.json");
+    /*    reader = new FileReader("datasetsStructure.json");
 
 
         JSONArray structureJSON = (JSONArray) jsonParser.parse(reader);
@@ -65,6 +73,7 @@ public class Exporter {
             struc = Document.parse(object.toString());
             //structure.insertOne(struc);
         }
+*/
         //String json = JSON.serialize(fil);
         DBObject filters = (DBObject) JSON.parse(filtersJSON.toString());
         BasicDBObject sort = new BasicDBObject();
@@ -77,11 +86,12 @@ public class Exporter {
             } else if (this.sortOrder.equalsIgnoreCase("asc")) {
                 order = 1;
             }
-            sort.put(sortBy, order);
-            cursor = collection.find((Bson) filters).sort(sort).limit(10).iterator();
-            //cursor = collection.find((Bson) filters).sort(sort).iterator();
+            sort.put(this.sortBy, order);
+            //cursor = collection.find((Bson) filters).sort(sort).limit(10).iterator();
+            cursor = collection.find((Bson) filters).sort(sort).iterator();
 
         } else {
+            //cursor = collection.find((Bson) filters).limit(10).iterator();
             cursor = collection.find((Bson) filters).iterator();
         }
 
@@ -104,6 +114,8 @@ public class Exporter {
     }
 
     public void writeXLSX(MongoCursor<Document> cursor) throws IOException {
+
+        int cellCount = list.size();
         Document d;
 
         File file = new File("temp.xlsx");
@@ -113,21 +125,28 @@ public class Exporter {
         Sheet sheet = workbook.createSheet(this.database);
 
         Row header = sheet.createRow(0);
-        for (int j = 0; j < size; j++) {
+        for (int j = 0; j < cellCount; j++) {
             Cell headerCell = header.createCell(j);
-            headerCell.setCellValue(this.Captions[j]);
+            JSONObject objectf = (JSONObject) list.get(j);
+            String caption = (String) objectf.get("caption");
+            headerCell.setCellValue(caption);
         }
-
-        for (int k = 1; k < 9 && cursor.hasNext(); k++) {
+        for (int k = 1; k < this.docCount && cursor.hasNext(); k++) {
             Row row = sheet.createRow(k);
             d = cursor.next();
-            //System.out.println(d);
-            for (int j = 0; j < 11; j++) {
+            for (int j = 0; j < cellCount; j++) {
                 Cell headerCell = row.createCell(j);
-                headerCell.setCellValue(d.get(this.Captions[j]).toString());
+                JSONObject objectf = (JSONObject) list.get(j);
+                String name = (String) objectf.get("name");
+                if (name.equals("oarObject")) {
+                    //тут должна быть обработка оар объекта
+                }
+                else {
+                    String out = d.get(name) == null ? "" : d.get(name).toString();
+                    headerCell.setCellValue(out);
+                }
             }
         }
-
         workbook.write(output);
         workbook.close();
     }
