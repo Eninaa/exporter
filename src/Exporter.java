@@ -28,7 +28,7 @@ public class Exporter {
     JSONArray list;
     long docCount;
 
-    public MongoCursor<Document> getData() throws IOException, ParseException {
+    public void getData() throws IOException, ParseException {
 
         JSONParser jsonParser = new JSONParser();
         FileReader reader;
@@ -53,6 +53,15 @@ public class Exporter {
         MongoCollection<Document> collection = db.getCollection(this.dataset);
         this.docCount = collection.countDocuments();
         MongoCollection<Document> structure = db.getCollection("datasetsStructure");
+
+        String con = String.format("{dataset: '%s', database: '%s' }", this.dataset, this.database);
+        DBObject fil = (DBObject) JSON.parse(con);
+        //String string = String.format("A String %s %s", database, dataset);
+        // "{dataset: 'ud_1_628e2166f844c10cc93c39f3'}" такое мы понимаем
+        System.out.println(con);
+        //{},  {your_key:1, _id:0}
+        Bson b = (Bson) fil;
+        System.out.println(b.toString());
         MongoCursor<Document> it = structure.find().iterator();
 
         this.list = new JSONArray();
@@ -64,6 +73,7 @@ public class Exporter {
           this.list = (JSONArray) js.get("fields");
         }
 
+      System.out.println(list.toString());
         //* IMPORT *//
     /*    reader = new FileReader("datasetsStructure.json");
 
@@ -100,7 +110,7 @@ public class Exporter {
         } else if (this.format.equals("JSON")) {
             writeJson(cursor);
         }
-        return cursor;
+        mongo.close();
     }
 
 
@@ -127,8 +137,8 @@ public class Exporter {
         Row header = sheet.createRow(0);
         for (int j = 0; j < cellCount; j++) {
             Cell headerCell = header.createCell(j);
-            JSONObject objectf = (JSONObject) list.get(j);
-            String caption = (String) objectf.get("caption");
+            JSONObject captions = (JSONObject) list.get(j);
+            String caption = (String) captions.get("caption");
             headerCell.setCellValue(caption);
         }
         for (int k = 1; k < this.docCount && cursor.hasNext(); k++) {
@@ -136,8 +146,8 @@ public class Exporter {
             d = cursor.next();
             for (int j = 0; j < cellCount; j++) {
                 Cell headerCell = row.createCell(j);
-                JSONObject objectf = (JSONObject) list.get(j);
-                String name = (String) objectf.get("name");
+                JSONObject names = (JSONObject) list.get(j);
+                String name = (String) names.get("name");
                 if (name.equals("oarObject")) {
                     //тут должна быть обработка оар объекта
                 }

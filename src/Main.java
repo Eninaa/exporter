@@ -13,7 +13,7 @@ public class Main {
 
     public static void main(String[] args) throws IOException, ParseException {
         Exporter ex = new Exporter();
-        MongoCursor <Document> cursor =  ex.getData();
+        ex.getData();
         //MongoCollection<Document> collection = ex.connect();
         //MongoCursor <Document> cursor  = ex.sort(collection);
         //ex.writeJson(cursor);
