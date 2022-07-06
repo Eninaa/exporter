@@ -1,6 +1,4 @@
 import java.io.*;
-import java.util.Set;
-
 import com.mongodb.BasicDBObject;
 import com.mongodb.client.*;
 import com.mongodb.util.JSON;
@@ -13,7 +11,6 @@ import org.json.simple.JSONArray;
 import org.json.simple.JSONObject;
 import org.json.simple.parser.JSONParser;
 import org.json.simple.parser.ParseException;
-
 
 public class Exporter {
 
@@ -37,20 +34,17 @@ public class Exporter {
         JSONObject filtersJSON = (JSONObject) params.get("filter");
 
         this.ConnectionString = (String) params.get("ConnectionString");
-        this.database = (String) params.get("database");
-        this.dataset = (String) params.get("dataset");
+        //this.database = (String) params.get("database");
+        //this.dataset = (String) params.get("dataset");
         //this.database = "region63_samarskaya_obl";
        // this.dataset = "mar_houses";
-       //this.database = "rk_userDatasets";
-      //this.dataset = "ud_1_625d2e90b5e13b0c5b442035";
-
+       this.database = "rk_userDatasets";
+      this.dataset = "ud_1_625d2e90b5e13b0c5b442035";
 
         this.sortBy = (String) params.get("sortBy");
         this.sortOrder = (String) params.get("sortOrder");
         this.format = (String) params.get("format");
         this.resultFile = (String) params.get("resultFile");
-
-        System.out.println("Сортировка: " + this.sortBy + ' ' + this.sortOrder);
 
         MongoClient mongo = MongoClients.create(this.ConnectionString); //this.connectionString
         MongoDatabase db = mongo.getDatabase(this.database);
@@ -60,16 +54,13 @@ public class Exporter {
         MongoCollection<Document> structure = metadata.getCollection("datasetsStructure");
         String str = String.format("{dataset: '%s', database: '%s' }", this.dataset, this.database);
         Bson structureFilter = (Bson) JSON.parse(str);
-        System.out.println("Bson structureFilter: " + structureFilter);
 
         MongoCursor<Document> it = structure.find(structureFilter).iterator();
 
         this.list = new JSONArray();
         String ob = it.next().toJson();
         JSONObject js = (JSONObject) jsonParser.parse(ob);
-        System.out.println(js);
         this.list = (JSONArray) js.get("fields");
-        System.out.println("LIST: " + list.toString());
 
         Bson filter = (Bson) JSON.parse(filtersJSON.toString());
         BasicDBObject sort = new BasicDBObject();
@@ -82,10 +73,10 @@ public class Exporter {
                 order = 1;
             }
             sort.put(this.sortBy, order);
-            cursor = collection.find().limit(3).iterator();
+            cursor = collection.find().limit(2).iterator();
             // cursor = collection.find(filter).sort(sort).iterator();
         } else {
-            cursor = collection.find().limit(3).iterator();
+            cursor = collection.find().limit(2).iterator();
             //cursor = collection.find(filter).iterator();
         }
 
@@ -115,7 +106,7 @@ public class Exporter {
         JSONObject geometry = new JSONObject();
         feature.put("type", "Feature");
         features.add(feature);
-        featureCollection.put("features", features);
+       // featureCollection.put("features", features);
 
         while(cursor.hasNext()) {
             doc = cursor.next();
@@ -152,7 +143,6 @@ public class Exporter {
                         for (int i = 0; i < nameParts.length-1; i++) {
                             d = (Document) doc.get(nameParts[i]);
                             t = (Document) d.get(nameParts[++i]);
-                            System.out.println("doc: " + t);
                         }
                         if (t != null) {
                             String featureStruc = (String) names.get("feature");
@@ -170,7 +160,7 @@ public class Exporter {
                 } else if (type.equals("ObjectId")) {
                     ObjectId id = (ObjectId) doc.get(name);
                     Object o = id.toString();
-                    if (id != null) {
+                    if (!id.equals(null)) {
                         properties.put(name, o);
                         feature.put("properties", properties);
                     }
@@ -183,18 +173,19 @@ public class Exporter {
                     }
                 }
             }
-            if(cursor.hasNext()) {
-                feature.put("type", "Feature");
+            System.out.println("FC: " + featureCollection.toString());
+            if (cursor.hasNext()) {
                 features.add(feature);
-                featureCollection.put("features", features);
+                System.out.println("cczas " + features);
             }
-
         }
+        System.out.println("features in the end " + features);
+        featureCollection.put("features", features);
+        System.out.println("FC: " + featureCollection.toString());
         writer.write(featureCollection.toString());
         writer.flush();
         writer.close();
     }
-
 
     public void writeXLSX(MongoCursor<Document> cursor, String path) throws IOException {
 
