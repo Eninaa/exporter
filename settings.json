@@ -1,0 +1,22 @@
+{
+  "params": {
+    "ConnectionString": "mongodb://192.168.57.102:27017",
+    "database": "rk_userDatasets",
+    "dataset": "ud_1_628e2166f844c10cc93c39f3",
+    "taskId": "62cc3a3e3ad68d079da25d3c",
+    "filter": {
+      "RawPunkt_old": {
+        "$regex": "Самара",
+        "$options": "i"
+      },
+      "HouseNumber": {
+        "$regex": "12",
+        "$options": "i"
+      }
+    },
+    "sortBy": "RawHouseNumber_old",
+    "sortOrder": "desc",
+    "format": "json",
+    "resultFile": "/home/temp/file.xlsx"
+  }
+}
