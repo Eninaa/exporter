@@ -5,6 +5,5 @@ public class Main {
     public static void main(String[] args) throws IOException, ParseException {
         Exporter ex = new Exporter();
         ex.getData();
-
     }
 }

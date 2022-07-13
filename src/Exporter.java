@@ -1,7 +1,6 @@
 import java.io.*;
 import java.text.SimpleDateFormat;
 import java.util.Date;
-
 import com.mongodb.BasicDBObject;
 import com.mongodb.client.*;
 import com.mongodb.client.model.Filters;
@@ -10,7 +9,6 @@ import org.bson.types.ObjectId;
 import org.bson.conversions.Bson;
 import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
-
 import org.json.simple.JSONArray;
 import org.json.simple.JSONObject;
 import org.json.simple.parser.JSONParser;
@@ -44,17 +42,11 @@ public class Exporter {
         JSONObject obj = (JSONObject) jsonParser.parse(reader);
         JSONObject params = (JSONObject) obj.get("params");
         JSONObject filtersJSON = (JSONObject) params.get("filter");
-
-
+        
         this.taskId = new ObjectId((String) params.get("taskId"));
-        System.out.println(taskId);
         this.ConnectionString = (String) params.get("ConnectionString");
-        //this.database = (String) params.get("database");
-       // this.dataset = (String) params.get("dataset");
-       //this.database = "region63_samarskaya_obl";
-       // this.dataset = "mar_houses";
-       this.database = "rk_userDatasets";
-      this.dataset = "ud_1_625d2e90b5e13b0c5b442035";
+        this.database = (String) params.get("database");
+        this.dataset = (String) params.get("dataset");
 
         this.sortBy = (String) params.get("sortBy");
         this.sortOrder = (String) params.get("sortOrder");
@@ -66,8 +58,7 @@ public class Exporter {
 
         this.metadata = mongo.getDatabase("rk_metadata");
         this.tasks = metadata.getCollection("tasks");
-
-
+        
         MongoCollection<Document> collection = db.getCollection(this.dataset);
         MongoCollection<Document> structure = metadata.getCollection("datasetsStructure");
         Bson structureFilter = Filters.and(Filters.regex("dataset", this.dataset), Filters.regex("database", this.database));
@@ -81,7 +72,6 @@ public class Exporter {
         Document filter = Document.parse(filtersJSON.toString());
         BasicDBObject sort = new BasicDBObject();
         this.operationsCount = collection.countDocuments(filter);
-        System.out.println(collection.find().first());
 
         MongoCursor<Document> cursor;
         if (this.sortOrder != null) {
@@ -92,28 +82,27 @@ public class Exporter {
                 order = 1;
             }
             sort.put(this.sortBy, order);
-            System.out.println(sort.toJson());
-            cursor = collection.find().limit(50).iterator();
+            
+            cursor = collection.find(filter).iterator();
         } else {
-            cursor = collection.find(filter).sort(sort).limit(50).iterator();
+           cursor = collection.find(filter).sort(sort).iterator();
         }
-System.out.println(cursor.available());
         if (this.format.equalsIgnoreCase("XLSX") || this.format.equalsIgnoreCase("XSLX")) {
             writeXLSX(cursor, this.resultFile);
-            System.out.println("xlsx");
         } else if (this.format.equalsIgnoreCase("JSON") || this.format.equalsIgnoreCase("GEOJSON")) {
             writeGEOJson(cursor, this.resultFile);
-            System.out.println("json");
         }
         cursor.close();
         mongo.close();
     }
     public void writeGEOJson(MongoCursor<Document> cursor, String path) throws IOException, ParseException {
-        File file = new File("test.geojson"); //удалить
-       // File file = new File(resultFile);
+       
+        File file = new File(resultFile);
         file.createNewFile();
         FileWriter writer = new FileWriter(file);
-        Document doc, d;
+        Document doc;
+        Document d = new Document();
+        String out = "";
         int cellCount = list.size();
         boolean geo = false;
 
@@ -131,50 +120,56 @@ System.out.println(cursor.available());
                 JSONObject names = (JSONObject) list.get(i);
                 String name = (String) names.get("name");
                 String type = (String) names.get("type");
-                System.out.println(type);
                 String strucFeatures = (String) names.get("feature");
 
-                if(name.contains(".")) {
-                    Document t = null;
+                if (name.contains(".")) {
                     String[] nameParts = name.split("\\p{Punct}");
                     for (int j = 0; j < nameParts.length - 1; j++) {
                         d = (Document) doc.get(nameParts[j]);
-                        if (d != null) {
-                            t = (Document) d.get(nameParts[++j]);
-                            if(strucFeatures!= null && strucFeatures.equals("Geometry")) {
-                                geometry.put("type", t.get("type"));
-                                geometry.put("coordinates", t.get("coordinates"));
-                                feature.put("geometry", geometry);
-                                geo = true;
-                            } else {
-                                properties.put(name, t);
-                                feature.put("properties", properties);
+                        if(type.equals("oarObject") || type.equals("geometry")) {
+                            if (d != null) {
+                                d = (Document) d.get(nameParts[++j]);
                             }
+                        } else if (type.equals("ObjectId")) {
+                            ObjectId id = (ObjectId) d.get(nameParts[++j]);
+                            if (!id.equals(null)) {
+                                out = id.toString();
+                            }
+                        } else {
+                            out = d.get(nameParts[++j]) == null ? "" : d.get(nameParts[++j]).toString();
                         }
-
                     }
-                } else if (strucFeatures!= null && strucFeatures.equals("Geometry")) {
-                    d = (Document) doc.get(name);
-                    if (d != null) {
+                } else {
+                    if (type.equals("oarObject") || type.equals("geometry")) {
+                        d = (Document) doc.get(name);
+                    } else if(type.equals("ObjectId")) {
+                        Object id = doc.get(name);
+                        if (!id.equals(null)) {
+                            out = id.toString();
+                        }
+                    } else {
+                        out = doc.get(name) == null ? "" : doc.get(name).toString();
+                    }
+                }
+
+                if (strucFeatures != null && strucFeatures.equals("Geometry")) {
+                    if(d != null) {
                         geometry.put("type", d.get("type"));
                         geometry.put("coordinates", d.get("coordinates"));
                         feature.put("geometry", geometry);
+                        geo = true;
                     }
-                    geo = true;
-                } else if (name.equals("oarObject")) {
-                    d = (Document) doc.get(name);
-                    if (d != null) {
+                } else if (type.equals("oarObject")) {
+                    if(d != null) {
                         properties.put(name, d);
-                        feature.put("properties", properties);
                     }
+                } else if (type.equals("ObjectId")) {
+                    properties.put(name, d);
                 } else {
-                    String out = doc.get(name) == null ? "" : doc.get(name).toString();
-                    if (out != null) {
-                        properties.put(name, out);
-                        feature.put("properties", properties);
-                    }
+                    properties.put(name, out);
                 }
             }
+            feature.put("properties", properties);
             feature.put("type", "Feature");
 
             if (geo) {
@@ -196,12 +191,11 @@ System.out.println(cursor.available());
     public void writeXLSX(MongoCursor<Document> cursor, String path) throws IOException, ParseException {
 
         int cellCount = list.size();
-        Document d;
         Document doc;
-        Document temp = null;
-        File file = new File("test.xlsx");
+        Document d;
+        String out = "";
+        File file = new File(this.resultFile);
         file.createNewFile();
-        //File file = new File(this.resultFile);
         FileOutputStream output = new FileOutputStream(file);
 
         Workbook workbook = new XSSFWorkbook();
@@ -215,51 +209,48 @@ System.out.println(cursor.available());
         }
         for (int k = 1; cursor.hasNext(); k++) {
             Row row = sheet.createRow(k);
-            d = cursor.next();
+            doc = cursor.next();
             for (int j = 0; j < cellCount; j++) {
                 Cell headerCell = row.createCell(j);
                 JSONObject names = (JSONObject) list.get(j);
                 String name = (String) names.get("name");
                 String type = (String) names.get("type");
                 if(name.contains(".")) {
-                    Document t = null;
                     String[] nameParts = name.split("\\p{Punct}");
                     for (int i = 0; i < nameParts.length-1; i++) {
-                        doc = (Document) d.get(nameParts[i]);
-                        // t = (Document) doc.get(nameParts[++i]);
-                        String out = d.get(nameParts[i]) == null ? "" : d.get(nameParts[++i]).toString();
-                        headerCell.setCellValue(out);
-                    }
-                } else {
-                    String out = null;
-                    switch (type) {
-                        case("oarObject") :
-                        case("geometry") :
-                            doc = (Document) d.get(name);
-                            if (doc != null) {
-                                out = doc.toJson();
+                        d = (Document) doc.get(nameParts[i]); // предполагаю что первый уровень многоуровневого поля может быть только объектом
+                        if(type.equals("oarObject") || type.equals("geometry")) {
+                            if (d != null) {
+                                Document t = (Document) d.get(nameParts[++i]);
+                                out = t.toJson();
                             }
-                            break;
-                        case("ObjectId") :
-                            ObjectId id = (ObjectId) d.get(name);
+                        } else if (type.equals("ObjectId")) {
+                            ObjectId id = (ObjectId) d.get(nameParts[++i]);
                             if (!id.equals(null)) {
                                 out = id.toString();
                             }
-                            break;
-                        /*case("int"):
-                            Integer a = d.getInteger(name);
-                            if(a != null) {
-                                out = a.toString();
-                            }
-                            break;*/
-                        default:
-                            out = d.get(name) == null ? "" : d.get(name).toString();
-                            break;
+                        } else {
+                            out = d.get(nameParts[++i]) == null ? "" : d.get(nameParts[++i]).toString();
+                        }
                     }
-                    headerCell.setCellValue(out);
+                } else {
+                    if (type.equals("oarObject") || type.equals("geometry")) {
+                        d = (Document) doc.get(name);
+                        if( d!= null) {
+                            out = d.toJson();
+
+                        }
+                    } else if(type.equals("ObjectId")) {
+                        Object id = doc.get(name);
+                        if (!id.equals(null)) {
+                            out = id.toString();
+                        }
+                    } else {
+                        out = doc.get(name) == null ? "" : doc.get(name).toString();
+                    }
 
                 }
-
+                    headerCell.setCellValue(out);
             }
             this.completedOperations ++;
             writeProgress();
@@ -270,12 +261,12 @@ System.out.println(cursor.available());
 
     public void writeProgress() {
 
-        this.progress = 100 * this.completedOperations / this.operationsCount;
+        this.progress = 1 * this.completedOperations / this.operationsCount;
 
         if (this.completedOperations % 1000 == 0) {
             writeInfo();
         }
-        if (this.progress == 100) {
+        if (this.progress > 0.98) {
 
             this.completed = true;
             writeInfo();
@@ -298,7 +289,6 @@ System.out.println(cursor.available());
             export.put("export", exportInfo);
 
              f = this.metadata.getCollection("userDatasets");
-             System.out.println(f.find(task).iterator().hasNext());
              if (!f.find(task).iterator().hasNext()) {
                  f = this.metadata.getCollection("regionalDatasets");
              }

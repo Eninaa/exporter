@@ -16,7 +16,7 @@
     },
     "sortBy": "RawHouseNumber_old",
     "sortOrder": "desc",
-    "format": "json",
+    "format": "xlsx",
     "resultFile": "/home/temp/file.xlsx"
   }
 }
