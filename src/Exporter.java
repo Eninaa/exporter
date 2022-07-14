@@ -1,9 +1,11 @@
 import java.io.*;
-import java.text.SimpleDateFormat;
-import java.util.Date;
+import java.nio.charset.StandardCharsets;
+import java.time.Instant;
 import com.mongodb.BasicDBObject;
 import com.mongodb.client.*;
 import com.mongodb.client.model.Filters;
+import com.mongodb.client.model.Updates;
+import org.bson.BsonDateTime;
 import org.bson.Document;
 import org.bson.types.ObjectId;
 import org.bson.conversions.Bson;
@@ -25,7 +27,11 @@ public class Exporter {
     String sortOrder = "";
     String format = "";
     String resultFile = "";
+    String commonDir = "";
+    String path = "";
     ObjectId taskId;
+    ObjectId datasetId;
+
     double operationsCount;
     double completedOperations;
     double progress;
@@ -38,7 +44,7 @@ public class Exporter {
     public void getData() throws IOException, ParseException {
 
         JSONParser jsonParser = new JSONParser();
-        FileReader reader = new FileReader("settings.json"); //
+        Reader reader = new InputStreamReader(new FileInputStream("settings.json"),StandardCharsets.UTF_8);
         JSONObject obj = (JSONObject) jsonParser.parse(reader);
         JSONObject params = (JSONObject) obj.get("params");
         JSONObject filtersJSON = (JSONObject) params.get("filter");
@@ -52,8 +58,11 @@ public class Exporter {
         this.sortOrder = (String) params.get("sortOrder");
         this.format = (String) params.get("format");
         this.resultFile = (String) params.get("resultFile");
+        this.commonDir = (String) params.get("commonDir");
+        //this.path = this.commonDir.concat(resultFile);
+      //  this.datasetId = new ObjectId((String) params.get("datasetId"));
 
-        MongoClient mongo = MongoClients.create(this.ConnectionString); //this.connectionString
+        MongoClient mongo = MongoClients.create(this.ConnectionString);
         MongoDatabase db = mongo.getDatabase(this.database);
 
         this.metadata = mongo.getDatabase("rk_metadata");
@@ -82,11 +91,12 @@ public class Exporter {
                 order = 1;
             }
             sort.put(this.sortBy, order);
-            
             cursor = collection.find(filter).iterator();
         } else {
            cursor = collection.find(filter).sort(sort).iterator();
+
         }
+
         if (this.format.equalsIgnoreCase("XLSX") || this.format.equalsIgnoreCase("XSLX")) {
             writeXLSX(cursor, this.resultFile);
         } else if (this.format.equalsIgnoreCase("JSON") || this.format.equalsIgnoreCase("GEOJSON")) {
@@ -96,10 +106,11 @@ public class Exporter {
         mongo.close();
     }
     public void writeGEOJson(MongoCursor<Document> cursor, String path) throws IOException, ParseException {
-       
-        File file = new File(resultFile);
+
+        File file = new File("test.geojson");
         file.createNewFile();
-        FileWriter writer = new FileWriter(file);
+        Writer wr = new OutputStreamWriter(new FileOutputStream(file),StandardCharsets.UTF_8);
+
         Document doc;
         Document d = new Document();
         String out = "";
@@ -113,6 +124,7 @@ public class Exporter {
         JSONObject feature = new JSONObject();
         JSONObject properties = new JSONObject();
         JSONObject geometry = new JSONObject();
+
 
         while (cursor.hasNext()) {
             doc = cursor.next();
@@ -151,7 +163,6 @@ public class Exporter {
                         out = doc.get(name) == null ? "" : doc.get(name).toString();
                     }
                 }
-
                 if (strucFeatures != null && strucFeatures.equals("Geometry")) {
                     if(d != null) {
                         geometry.put("type", d.get("type"));
@@ -175,7 +186,6 @@ public class Exporter {
             if (geo) {
                 features.add(feature);
             }
-
             feature = new JSONObject();
             geometry = new JSONObject();
             properties = new JSONObject();
@@ -183,18 +193,18 @@ public class Exporter {
             writeProgress();
         }
         featureCollection.put("features", features);
-        writer.write(featureCollection.toJSONString());
-        writer.flush();
-        writer.close();
+
+        wr.write(featureCollection.toJSONString());
+        wr.flush();
+        wr.close();
 
     }
     public void writeXLSX(MongoCursor<Document> cursor, String path) throws IOException, ParseException {
-
         int cellCount = list.size();
         Document doc;
         Document d;
         String out = "";
-        File file = new File(this.resultFile);
+        File file = new File("test.xlsx");
         file.createNewFile();
         FileOutputStream output = new FileOutputStream(file);
 
@@ -238,7 +248,6 @@ public class Exporter {
                         d = (Document) doc.get(name);
                         if( d!= null) {
                             out = d.toJson();
-
                         }
                     } else if(type.equals("ObjectId")) {
                         Object id = doc.get(name);
@@ -248,7 +257,6 @@ public class Exporter {
                     } else {
                         out = doc.get(name) == null ? "" : doc.get(name).toString();
                     }
-
                 }
                     headerCell.setCellValue(out);
             }
@@ -262,52 +270,50 @@ public class Exporter {
     public void writeProgress() {
 
         this.progress = 1 * this.completedOperations / this.operationsCount;
-
         if (this.completedOperations % 1000 == 0) {
             writeInfo();
         }
-        if (this.progress > 0.98) {
-
+       if (this.progress == 1 ) {
             this.completed = true;
             writeInfo();
-
             MongoCollection<Document> f;
             BasicDBObject task = new BasicDBObject();
-            BasicDBObject updateObject = new BasicDBObject();
             task.put("dataset", this.dataset);
+            task.put("_id", this.datasetId);
 
-            JSONObject export = new JSONObject();
-            JSONArray exportInfo = new JSONArray();
             JSONObject info = new JSONObject();
+            BsonDateTime dateTime = new BsonDateTime(Instant.now().toEpochMilli());
 
             info.put("status", true);
-            Date dateNow = new Date();
-            SimpleDateFormat formatForDateNow = new SimpleDateFormat("yyyy.MM.dd 'T' hh:mm:ss z");
-            info.put("time", formatForDateNow.format(dateNow));
+            info.put("time", dateTime);
             info.put("file", this.resultFile);
-            exportInfo.add(info);
-            export.put("export", exportInfo);
-
+           Bson update = Updates.push("export", info);
              f = this.metadata.getCollection("userDatasets");
              if (!f.find(task).iterator().hasNext()) {
                  f = this.metadata.getCollection("regionalDatasets");
              }
-             updateObject.put("$set", export);
-             f.updateOne(task, updateObject);
+             f.updateOne(task,update);
         }
     }
     public void writeInfo() {
-
         BasicDBObject task = new BasicDBObject();
         BasicDBObject updateObject = new BasicDBObject();
         task.put("_id", this.taskId);
 
-        BasicDBObject lastInfo = new BasicDBObject();
-        BasicDBObject info = new BasicDBObject();
+        JSONObject lastInfo = new JSONObject();
+        JSONObject info = new JSONObject();
+        JSONArray errors = new JSONArray();
+        JSONObject status = new JSONObject();
+
+        if (this.completed) {
+            status.put("status", "complete");
+            updateObject.put("$set", status);
+            tasks.updateOne(task, updateObject);
+        }
 
         info.put("progress", this.progress);
         info.put("completed", this.completed);
-        info.put("errors", 0);
+        info.put("errors", errors);
         lastInfo.put("lastInfo", info);
 
         updateObject.put("$set", lastInfo);
